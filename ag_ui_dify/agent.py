@@ -141,7 +141,11 @@ class DifyAgent:
                 self._set_conversation_id(thread_id, translator.conversation_id)
 
         except Exception as e:
-            yield RunErrorEvent(type=EventType.RUN_ERROR, message=str(e))
+            # Sanitize — never include raw httpx errors that may contain headers
+            msg = str(e)
+            if len(msg) > 500:
+                msg = msg[:500] + "...(truncated)"
+            yield RunErrorEvent(type=EventType.RUN_ERROR, message=msg)
 
         finally:
             await client.close()

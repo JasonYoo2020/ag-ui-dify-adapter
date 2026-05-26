@@ -46,13 +46,6 @@ try:
 except ImportError:
     _HAS_REASONING = False
 
-try:
-    from ag_ui.core import ActivitySnapshotEvent, ActivityDeltaEvent
-    _HAS_ACTIVITY = True
-except ImportError:
-    _HAS_ACTIVITY = False
-
-
 def _new_id() -> str:
     return uuid.uuid4().hex
 
@@ -325,6 +318,15 @@ class BaseTranslator(ABC):
                         self._think_buffer = self._think_buffer[safe_len:]
                     break
 
+    async def _finish(self):
+        """Emit cleanup events at end of an incomplete stream."""
+        async for e in self._flush_reasoning():
+            yield e
+        self._message_started = False
+        if self._message_id:
+            yield self._text_message_end()
+        yield self._run_finished()
+
     async def _flush_reasoning(self) -> AsyncGenerator[BaseEvent, None]:
         if self._reasoning_started:
             e = self._reasoning_end()
@@ -337,6 +339,23 @@ class BaseTextTranslator(BaseTranslator):
 
     def __init__(self, thread_id: str, run_id: str):
         super().__init__(thread_id, run_id)
+
+    def _error_message(self, evt: DifyStreamEvent) -> str:
+        """Safe error message extraction that won't leak credentials."""
+        return evt.message or evt.extra.get("message", "Unknown Dify error")
+
+    async def _handle_message_start(self, evt: DifyStreamEvent):
+        """Emit TEXT_MESSAGE_START if not already started."""
+        if not self._message_started:
+            self._message_started = True
+            self._message_id = evt.message_id or evt.id or _new_id()
+            yield self._text_message_start()
+
+    async def _handle_message_content(self, evt: DifyStreamEvent):
+        """Emit TEXT_MESSAGE_CONTENT with reasoning detection."""
+        if evt.answer:
+            async for e in self._emit_text_with_reasoning(evt.answer):
+                yield e
 
     async def _handle_message_end(
         self, evt: DifyStreamEvent, end_reasoning: bool = True
@@ -351,6 +370,53 @@ class BaseTextTranslator(BaseTranslator):
         self._finished = True
         yield self._run_finished()
 
+    async def _handle_message_file(self, evt: DifyStreamEvent):
+        yield self._custom("message_file", {
+            "message_id": evt.message_id,
+            "data": evt.extra,
+        })
+
+    async def _handle_message_replace(self, evt: DifyStreamEvent):
+        yield self._custom("message_replace", {
+            "answer": evt.answer,
+            "reason": evt.extra.get("reason"),
+        })
+
+    async def _handle_tts(self, evt: DifyStreamEvent):
+        if evt.event == "tts_message":
+            if evt.audio:
+                yield self._custom("tts_message", {"audio": evt.audio})
+        elif evt.event == "tts_message_end":
+            yield self._custom("tts_message_end", {})
+
+    def _is_tts_event(self, evt: DifyStreamEvent) -> bool:
+        return evt.event in ("tts_message", "tts_message_end")
+
+    async def _handle_common_event(
+        self, evt: DifyStreamEvent
+    ) -> AsyncGenerator[BaseEvent, None]:
+        """Shared handler for events common to Chat/Agent/Completion."""
+        if evt.event == "message":
+            async for e in self._handle_message_start(evt):
+                yield e
+            async for e in self._handle_message_content(evt):
+                yield e
+        elif evt.event in ("message_replace", "message_file"):
+            if evt.event == "message_replace":
+                async for e in self._handle_message_replace(evt):
+                    yield e
+            else:
+                async for e in self._handle_message_file(evt):
+                    yield e
+        elif self._is_tts_event(evt):
+            async for e in self._handle_tts(evt):
+                yield e
+        elif evt.event == "message_end":
+            async for e in self._handle_message_end(evt):
+                yield e
+        else:
+            yield self._raw(evt.model_dump(exclude_none=True))
+
 
 class ChatTranslator(BaseTextTranslator):
     """Translates Dify Chat app SSE events to AG-UI events."""
@@ -359,62 +425,56 @@ class ChatTranslator(BaseTextTranslator):
         self, events: AsyncGenerator[DifyStreamEvent, None]
     ) -> AsyncGenerator[BaseEvent, None]:
         yield self._run_started()
-
         async for evt in events:
             if evt.event == "ping":
                 continue
-
             if evt.event == "error":
-                yield self._run_error(
-                    evt.message or evt.extra.get("message", "Unknown Dify error"),
-                    evt.code,
-                )
+                yield self._run_error(self._error_message(evt), evt.code)
                 return
+            if evt.event == "message_end":
+                async for e in self._handle_message_end(evt):
+                    yield e
+                return
+            async for e in self._handle_common_event(evt):
+                yield e
+        async for e in self._finish():
+            yield e
 
-            if evt.event == "message":
-                if not self._message_started:
-                    self._message_started = True
-                    self._message_id = evt.message_id or evt.id or _new_id()
-                    yield self._text_message_start()
-                if evt.answer:
-                    async for e in self._emit_text_with_reasoning(evt.answer):
-                        yield e
 
-            elif evt.event == "message_replace":
-                yield self._custom("message_replace", {
-                    "answer": evt.answer,
-                    "reason": evt.extra.get("reason"),
-                })
+class AgentTranslator(BaseTextTranslator):
+    """Translates Dify Agent app SSE events to AG-UI events."""
 
-            elif evt.event == "message_file":
-                yield self._custom("message_file", {
-                    "message_id": evt.message_id,
-                    "data": evt.extra,
-                })
+    def __init__(self, thread_id: str, run_id: str):
+        super().__init__(thread_id, run_id)
+        self._current_tool_call_id: Optional[str] = None
 
+    async def translate(
+        self, events: AsyncGenerator[DifyStreamEvent, None]
+    ) -> AsyncGenerator[BaseEvent, None]:
+        yield self._run_started()
+        async for evt in events:
+            if evt.event == "ping":
+                continue
+            if evt.event == "error":
+                yield self._run_error(self._error_message(evt), evt.code)
+                return
+            if evt.event == "agent_thought":
+                async for e in self._handle_agent_thought(evt):
+                    yield e
+            elif evt.event == "agent_message":
+                async for e in self._handle_message_start(evt):
+                    yield e
+                async for e in self._handle_message_content(evt):
+                    yield e
             elif evt.event == "message_end":
                 async for e in self._handle_message_end(evt):
                     yield e
                 return
-
-            elif evt.event == "tts_message":
-                if evt.audio:
-                    yield self._custom("tts_message", {"audio": evt.audio})
-
-            elif evt.event == "tts_message_end":
-                yield self._custom("tts_message_end", {})
-
             else:
-                # Unhandled event → RAW pass-through
-                yield self._raw(evt.model_dump(exclude_none=True))
-
-        if not self._finished:
-            async for e in self._flush_reasoning():
-                yield e
-            self._message_started = False
-            if self._message_id:
-                yield self._text_message_end()
-            yield self._run_finished()
+                async for e in self._handle_common_event(evt):
+                    yield e
+        async for e in self._finish():
+            yield e
 
 
 class AgentTranslator(BaseTextTranslator):
@@ -580,10 +640,7 @@ class WorkflowTranslator(BaseTextTranslator):
                 continue
 
             if evt.event == "error":
-                yield self._run_error(
-                    evt.message or evt.extra.get("message", "Unknown Dify error"),
-                    evt.code,
-                )
+                yield self._run_error(self._error_message(evt), evt.code)
                 return
 
             if evt.event == "workflow_started":
@@ -700,12 +757,8 @@ class WorkflowTranslator(BaseTextTranslator):
             else:
                 yield self._raw(evt.model_dump(exclude_none=True))
 
-        if not self._finished:
-            async for e in self._flush_reasoning():
-                yield e
-            if self._message_id:
-                yield self._text_message_end()
-            yield self._run_finished()
+        async for e in self._finish():
+            yield e
 
 
 class CompletionTranslator(BaseTextTranslator):
@@ -715,52 +768,17 @@ class CompletionTranslator(BaseTextTranslator):
         self, events: AsyncGenerator[DifyStreamEvent, None]
     ) -> AsyncGenerator[BaseEvent, None]:
         yield self._run_started()
-
         async for evt in events:
             if evt.event == "ping":
                 continue
-
             if evt.event == "error":
-                yield self._run_error(
-                    evt.message or evt.extra.get("message", "Unknown Dify error"),
-                    evt.code,
-                )
+                yield self._run_error(self._error_message(evt), evt.code)
                 return
-
-            if evt.event == "message":
-                if not self._message_started:
-                    self._message_started = True
-                    self._message_id = evt.message_id or evt.id or _new_id()
-                    yield self._text_message_start()
-                if evt.answer:
-                    async for e in self._emit_text_with_reasoning(evt.answer):
-                        yield e
-
-            elif evt.event == "message_end":
+            if evt.event == "message_end":
                 async for e in self._handle_message_end(evt):
                     yield e
                 return
-
-            elif evt.event == "message_file":
-                yield self._custom("message_file", {
-                    "message_id": evt.message_id,
-                    "data": evt.extra,
-                })
-
-            elif evt.event == "tts_message":
-                if evt.audio:
-                    yield self._custom("tts_message", {"audio": evt.audio})
-
-            elif evt.event == "tts_message_end":
-                yield self._custom("tts_message_end", {})
-
-            else:
-                yield self._raw(evt.model_dump(exclude_none=True))
-
-        if not self._finished:
-            async for e in self._flush_reasoning():
+            async for e in self._handle_common_event(evt):
                 yield e
-            self._message_started = False
-            if self._message_id:
-                yield self._text_message_end()
-            yield self._run_finished()
+        async for e in self._finish():
+            yield e

@@ -27,13 +27,14 @@ from ag_ui.encoder import EventEncoder
 from .agent import DifyAgent
 from .types import DifyAppType, DifyConfig
 
+# Module-level to avoid re-creating on every request
+from ag_ui.core import Message
+from pydantic import TypeAdapter
+_message_adapter = TypeAdapter(Message)
+
 
 def _parse_run_input(body: dict) -> RunAgentInput:
     """Parse a JSON dict into a RunAgentInput, accepting both camelCase and snake_case."""
-    from ag_ui.core import Message
-    from pydantic import TypeAdapter
-
-    _message_adapter = TypeAdapter(Message)
 
     messages_raw = body.get("messages", [])
     messages = [_message_adapter.validate_python(m) for m in messages_raw]
@@ -233,6 +234,12 @@ def create_app():
 
     if agents:
         for name, agent in agents.items():
+            # Validate agent name — only allow safe path characters
+            if not name or "/" in name or "\\" in name or name in (".", ".."):
+                raise ValueError(
+                    f"Invalid agent name: {name!r}. "
+                    "Use only letters, numbers, hyphens, and underscores."
+                )
             routes.append(
                 Route(f"/{name}", _make_agent_endpoint(agent), methods=["POST"])
             )

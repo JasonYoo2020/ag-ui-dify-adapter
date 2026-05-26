@@ -1,8 +1,6 @@
 """Async HTTP client for Dify REST API with SSE streaming support."""
 
 import json
-import time
-import uuid
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
@@ -48,7 +46,8 @@ class DifyClient:
             self._client = None
 
     def _clean_request_data(self, data: dict) -> dict:
-        """Remove empty optional fields from request data."""
+        """Remove empty optional fields from request data (returns a copy)."""
+        data = {k: v for k, v in data.items()}
         if isinstance(data.get("files"), list) and len(data["files"]) == 0:
             data.pop("files", None)
         if data.get("conversation_id") == "":
