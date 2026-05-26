@@ -19,6 +19,7 @@ Or for a single default agent:
 
 import json
 import os
+from pathlib import Path
 from typing import AsyncGenerator, Dict, Optional
 
 from ag_ui.core import BaseEvent, RunAgentInput
@@ -26,6 +27,15 @@ from ag_ui.encoder import EventEncoder
 
 from .agent import DifyAgent
 from .types import DifyAppType, DifyConfig
+
+# Load .env file if python-dotenv is available
+try:
+    from dotenv import load_dotenv
+    _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+    if _ENV_FILE.exists():
+        load_dotenv(_ENV_FILE)
+except ImportError:
+    pass
 
 # Module-level to avoid re-creating on every request
 from ag_ui.core import Message
