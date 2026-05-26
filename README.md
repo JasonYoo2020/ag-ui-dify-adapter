@@ -165,6 +165,35 @@ convs = await client.get_conversations(user="...")
 upload_result = await client.upload_file(file_path="...", user="...")
 ```
 
+## Project Structure
+
+```
+ag_ui_dify/
+├── __init__.py           # Package exports
+├── types.py              # Dify type definitions (Pydantic models)
+├── dify_client.py        # Async HTTP client for all Dify endpoints
+├── event_translator.py   # Event translators (Chat/Agent/Workflow/Completion)
+├── agent.py              # DifyAgent main adapter
+└── server.py             # Starlette HTTP SSE endpoint
+tests/
+├── test_types.py         # Type model tests (19)
+├── test_translator.py    # Translator tests (14)
+├── test_client.py        # Client tests (5)
+├── test_agent.py         # Agent tests (10)
+└── test_integration.py   # Real-environment integration tests
+```
+
+## Verification Status
+
+All 4 Dify app types have been verified against a real Dify instance:
+
+| App Type | Real Dify Tested | Notes |
+|---|---|---|
+| Agent | ✓ | Tool calls, reasoning chain, multi-turn conversation |
+| Workflow | ✓ | Node execution, agent_log sub-steps, text output |
+| Chat | ✓ | Streaming text, message lifecycle |
+| Completion | ✓ | Streaming text, input variables |
+
 ## Requirements
 
 - Python >= 3.9
