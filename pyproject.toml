@@ -3,20 +3,40 @@ name = "ag-ui-dify-adapter"
 version = "0.1.0"
 description = "AG-UI protocol adapter for Dify — translates Dify API responses to AG-UI streaming events"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     {name = "Chuanlong"}
 ]
 requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
-    "ag-ui-protocol>=0.1.5",
+    "ag-ui-protocol>=0.1.17",
     "httpx>=0.27.0",
     "pydantic>=2.11.0",
 ]
 
 [project.optional-dependencies]
 server = ["starlette>=0.40.0", "uvicorn>=0.30.0"]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.24.0", "pytest-httpx>=0.30.0"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-httpx>=0.30.0",
+]
+
+[project.urls]
+Repository = "https://gitee.com/chuanlong/ag-ui-dify-adapter"
 
 [build-system]
 requires = ["setuptools>=68.0"]
@@ -24,6 +44,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["ag_ui_dify*"]
+exclude = ["ag_ui_dify.__pycache__*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

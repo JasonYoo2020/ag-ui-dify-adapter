@@ -40,3 +40,4 @@ docker-compose.override.yml
 
 # MyPy
 .mypy_cache/
+dist/

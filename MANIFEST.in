@@ -1,0 +1,8 @@
+include README.md
+include README_zh_CN.md
+include LICENSE
+include pyproject.toml
+graft ag_ui_dify
+graft tests
+prune __pycache__
+prune *.pyc
