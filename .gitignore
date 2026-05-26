@@ -32,6 +32,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Other (local-only docs)
+other/
+
 # Docker
 docker-compose.override.yml
 
