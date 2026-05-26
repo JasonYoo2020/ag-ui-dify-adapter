@@ -395,7 +395,11 @@ class BaseTextTranslator(BaseTranslator):
     async def _handle_common_event(
         self, evt: DifyStreamEvent
     ) -> AsyncGenerator[BaseEvent, None]:
-        """Shared handler for events common to Chat/Agent/Completion."""
+        """Shared handler for events common to Chat/Agent/Completion.
+
+        Does NOT handle message_end — each translator must handle it explicitly
+        to stop the stream loop.
+        """
         if evt.event == "message":
             async for e in self._handle_message_start(evt):
                 yield e
@@ -410,9 +414,6 @@ class BaseTextTranslator(BaseTranslator):
                     yield e
         elif self._is_tts_event(evt):
             async for e in self._handle_tts(evt):
-                yield e
-        elif evt.event == "message_end":
-            async for e in self._handle_message_end(evt):
                 yield e
         else:
             yield self._raw(evt.model_dump(exclude_none=True))
