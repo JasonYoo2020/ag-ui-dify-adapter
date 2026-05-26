@@ -194,10 +194,131 @@ All 4 Dify app types have been verified against a real Dify instance:
 | Chat | ✓ | Streaming text, message lifecycle |
 | Completion | ✓ | Streaming text, input variables |
 
+## CopilotKit Integration
+
+CopilotKit can connect to the adapter via `HttpAgent` from `@ag-ui/client`.
+The adapter server speaks the AG-UI protocol natively — no additional wrapper needed.
+
+### Architecture
+
+```
+CopilotKit Frontend (React)
+  │  <CopilotKit runtimeUrl="/api/copilotkit">
+  │    <CopilotChat agentId="dify" />
+  │  </CopilotKit>
+  ▼
+CopilotKit Runtime (Next.js API Route)
+  │  new CopilotRuntime({
+  │    agents: { dify: new HttpAgent({ url: "http://adapter:8080" }) }
+  │  })
+  ▼
+ag-ui-dify-adapter (this package)
+  │  POST /  ← RunAgentInput JSON
+  │  → text/event-stream (AG-UI SSE events)
+  ▼
+Dify API
+```
+
+### Step 1 — Start the adapter
+
+```bash
+DIFY_API_KEY=app-xxx \
+DIFY_BASE_URL=http://localhost/v1 \
+DIFY_APP_TYPE=agent \
+uvicorn ag_ui_dify:create_app --host 0.0.0.0 --port 8080
+```
+
+No code needed — just environment variables.
+
+### Step 2 — Configure CopilotKit Runtime
+
+```ts
+// app/api/copilotkit/route.ts (Next.js App Router)
+import { NextRequest } from "next/server";
+import {
+  CopilotRuntime,
+  ExperimentalEmptyAdapter,
+  copilotRuntimeNextJSAppRouterEndpoint,
+} from "@copilotkit/runtime";
+import { HttpAgent } from "@ag-ui/client";
+
+const runtime = new CopilotRuntime({
+  agents: {
+    dify: new HttpAgent({
+      url: process.env.DIFY_ADAPTER_URL || "http://localhost:8080",
+    }),
+  },
+});
+
+const serviceAdapter = new ExperimentalEmptyAdapter();
+
+export const POST = (req: NextRequest) => {
+  const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
+    endpoint: "/api/copilotkit",
+    serviceAdapter,
+    runtime,
+  });
+  return handleRequest(req);
+};
+```
+
+### Step 3 — Frontend
+
+```tsx
+import { CopilotKit } from "@copilotkit/react-core";
+import { CopilotChat } from "@copilotkit/react-ui";
+import "@copilotkit/react-ui/styles.css";
+
+export default function App() {
+  return (
+    <CopilotKit runtimeUrl="/api/copilotkit">
+      <CopilotChat agentId="dify" />
+    </CopilotKit>
+  );
+}
+```
+
+### Docker Compose
+
+```yaml
+services:
+  adapter:
+    build: .
+    ports: ["8080:8080"]
+    environment:
+      DIFY_API_KEY: app-xxx
+      DIFY_BASE_URL: http://dify-server/v1
+      DIFY_APP_TYPE: agent
+
+  copilotkit:
+    build: ./copilotkit-app
+    ports: ["3000:3000"]
+    environment:
+      DIFY_ADAPTER_URL: http://adapter:8080
+    depends_on: [adapter]
+```
+
+### Multi-Agent Setup
+
+```ts
+const runtime = new CopilotRuntime({
+  agents: {
+    "company-paper": new HttpAgent({
+      url: `${ADAPTER}/company-paper`,
+    }),
+    "market-research": new HttpAgent({
+      url: `${ADAPTER}/market-research`,
+    }),
+  },
+});
+```
+
+Run multiple adapter instances, each with its own `DIFY_API_KEY` and `DIFY_APP_TYPE`.
+
 ## Requirements
 
 - Python >= 3.9
-- ag-ui-protocol >= 0.1.5
+- ag-ui-protocol >= 0.1.17
 - httpx >= 0.27.0
 - pydantic >= 2.11.0
 - starlette >= 0.40.0 (optional, for HTTP server)

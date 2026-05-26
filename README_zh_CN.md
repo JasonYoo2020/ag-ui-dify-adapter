@@ -165,10 +165,130 @@ convs = await client.get_conversations(user="...")
 upload_result = await client.upload_file(file_path="...", user="...")
 ```
 
+## CopilotKit 集成
+
+适配器原生支持 AG-UI 协议，可通过 `@ag-ui/client` 的 `HttpAgent` 与 CopilotKit 无缝对接。
+
+### 架构
+
+```
+CopilotKit 前端 (React)
+  │  <CopilotKit runtimeUrl="/api/copilotkit">
+  │    <CopilotChat agentId="dify" />
+  │  </CopilotKit>
+  ▼
+CopilotKit Runtime (Next.js API Route)
+  │  new CopilotRuntime({
+  │    agents: { dify: new HttpAgent({ url: "http://adapter:8080" }) }
+  │  })
+  ▼
+ag-ui-dify-adapter (本项目)
+  │  POST /  ← RunAgentInput JSON
+  │  → text/event-stream (AG-UI SSE 事件)
+  ▼
+Dify API
+```
+
+### 步骤 1 — 启动适配器
+
+```bash
+DIFY_API_KEY=app-xxx \
+DIFY_BASE_URL=http://localhost/v1 \
+DIFY_APP_TYPE=agent \
+uvicorn ag_ui_dify:create_app --host 0.0.0.0 --port 8080
+```
+
+无需编写代码，仅需环境变量。
+
+### 步骤 2 — 配置 CopilotKit Runtime
+
+```ts
+// app/api/copilotkit/route.ts (Next.js App Router)
+import { NextRequest } from "next/server";
+import {
+  CopilotRuntime,
+  ExperimentalEmptyAdapter,
+  copilotRuntimeNextJSAppRouterEndpoint,
+} from "@copilotkit/runtime";
+import { HttpAgent } from "@ag-ui/client";
+
+const runtime = new CopilotRuntime({
+  agents: {
+    dify: new HttpAgent({
+      url: process.env.DIFY_ADAPTER_URL || "http://localhost:8080",
+    }),
+  },
+});
+
+const serviceAdapter = new ExperimentalEmptyAdapter();
+
+export const POST = (req: NextRequest) => {
+  const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
+    endpoint: "/api/copilotkit",
+    serviceAdapter,
+    runtime,
+  });
+  return handleRequest(req);
+};
+```
+
+### 步骤 3 — 前端
+
+```tsx
+import { CopilotKit } from "@copilotkit/react-core";
+import { CopilotChat } from "@copilotkit/react-ui";
+import "@copilotkit/react-ui/styles.css";
+
+export default function App() {
+  return (
+    <CopilotKit runtimeUrl="/api/copilotkit">
+      <CopilotChat agentId="dify" />
+    </CopilotKit>
+  );
+}
+```
+
+### Docker Compose
+
+```yaml
+services:
+  adapter:
+    build: .
+    ports: ["8080:8080"]
+    environment:
+      DIFY_API_KEY: app-xxx
+      DIFY_BASE_URL: http://dify-server/v1
+      DIFY_APP_TYPE: agent
+
+  copilotkit:
+    build: ./copilotkit-app
+    ports: ["3000:3000"]
+    environment:
+      DIFY_ADAPTER_URL: http://adapter:8080
+    depends_on: [adapter]
+```
+
+### 多 Agent 部署
+
+```ts
+const runtime = new CopilotRuntime({
+  agents: {
+    "company-paper": new HttpAgent({
+      url: `${ADAPTER}/company-paper`,
+    }),
+    "market-research": new HttpAgent({
+      url: `${ADAPTER}/market-research`,
+    }),
+  },
+});
+```
+
+启动多个适配器实例，每个配置不同的 `DIFY_API_KEY` 和 `DIFY_APP_TYPE`。
+
 ## 依赖
 
 - Python >= 3.9
-- ag-ui-protocol >= 0.1.5
+- ag-ui-protocol >= 0.1.17
 - httpx >= 0.27.0
 - pydantic >= 2.11.0
 - starlette >= 0.40.0（可选，用于 HTTP 服务）
