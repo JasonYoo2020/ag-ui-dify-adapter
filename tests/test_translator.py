@@ -6,9 +6,11 @@ from typing import List
 from ag_ui.core import (
     BaseEvent,
     CustomEvent,
+    MessagesSnapshotEvent,
     RunErrorEvent,
     RunFinishedEvent,
     RunStartedEvent,
+    StateSnapshotEvent,
     StepFinishedEvent,
     StepStartedEvent,
     TextMessageContentEvent,
@@ -16,6 +18,7 @@ from ag_ui.core import (
     TextMessageStartEvent,
     ToolCallArgsEvent,
     ToolCallEndEvent,
+    ToolCallResultEvent,
     ToolCallStartEvent,
 )
 
@@ -165,10 +168,12 @@ class TestAgentTranslator(unittest.IsolatedAsyncioTestCase):
         tool_args = [e for e in results if isinstance(e, ToolCallArgsEvent)]
         self.assertTrue(any('weather' in a.delta for a in tool_args))
 
-        # Check custom events
+        # Check custom events (agent_thought with <think> tags)
         customs = [e for e in results if isinstance(e, CustomEvent)]
-        self.assertTrue(any(c.name == "agent_thought" for c in customs))
-        self.assertTrue(any(c.name == "agent_observation" for c in customs))
+        # Observation is now TOOL_CALL_RESULT, not CUSTOM
+        tool_results = [e for e in results if isinstance(e, ToolCallResultEvent)]
+        self.assertGreaterEqual(len(tool_results), 1, "Should have TOOL_CALL_RESULT for observation")
+        self.assertTrue(any("Sunny" in r.content for r in tool_results))
 
     async def test_multiple_agent_thoughts(self):
         events = [

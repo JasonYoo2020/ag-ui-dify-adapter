@@ -1,8 +1,20 @@
-"""DifyAgent — the main AG-UI adapter for Dify."""
+"""DifyAgent — the main AG-UI adapter for Dify.
+
+Accepts RunAgentInput, translates it to Dify API calls, and streams
+AG-UI events back. Emits STATE_SNAPSHOT and MESSAGES_SNAPSHOT at
+the start of each run.
+"""
 
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from ag_ui.core import BaseEvent, EventType, RunAgentInput, RunErrorEvent
+from ag_ui.core import (
+    BaseEvent,
+    EventType,
+    MessagesSnapshotEvent,
+    RunAgentInput,
+    RunErrorEvent,
+    StateSnapshotEvent,
+)
 
 from .dify_client import DifyClient
 from .event_translator import (
@@ -40,7 +52,6 @@ class DifyAgent:
             self._conversations[thread_id] = conversation_id
 
     def _extract_query(self, input: RunAgentInput) -> str:
-        """Extract the last user message as the Dify query."""
         for msg in reversed(input.messages):
             role = getattr(msg, "role", None)
             if role == "user":
@@ -50,7 +61,6 @@ class DifyAgent:
         return ""
 
     def _build_inputs(self, input: RunAgentInput) -> Dict[str, Any]:
-        """Merge state, context, and forwarded_props into Dify inputs."""
         inputs: Dict[str, Any] = {}
 
         if isinstance(input.state, dict):
@@ -78,7 +88,23 @@ class DifyAgent:
     async def run(
         self, input: RunAgentInput
     ) -> AsyncGenerator[BaseEvent, None]:
-        """Execute an AG-UI run against the Dify API."""
+        """Execute an AG-UI run against the Dify API.
+
+        Emits STATE_SNAPSHOT and MESSAGES_SNAPSHOT at start,
+        followed by the translated Dify SSE event stream.
+        """
+        # Emit initial snapshots
+        if input.messages:
+            yield MessagesSnapshotEvent(
+                type=EventType.MESSAGES_SNAPSHOT,
+                messages=input.messages,
+            )
+        if input.state is not None:
+            yield StateSnapshotEvent(
+                type=EventType.STATE_SNAPSHOT,
+                snapshot=input.state,
+            )
+
         client = DifyClient(self._config)
         try:
             app_type = self._config.app_type or await client.detect_app_type()

@@ -1,4 +1,12 @@
-"""AG-UI Dify Adapter — translate Dify API responses to AG-UI streaming events."""
+"""AG-UI Dify Adapter — translate Dify API responses to AG-UI streaming events.
+
+Supports all 4 Dify app types (Chat, Agent, Workflow, Completion) with
+comprehensive event mapping including:
+- 17+ AG-UI event types: TEXT_MESSAGE, TOOL_CALL, TOOL_CALL_RESULT,
+  REASONING, STATE_SNAPSHOT, MESSAGES_SNAPSHOT, STEP, CUSTOM, RAW, etc.
+- Streaming <think> tag detection → REASONING events
+- 30+ Dify SSE event types handled
+"""
 
 from .agent import DifyAgent
 from .dify_client import DifyClient
