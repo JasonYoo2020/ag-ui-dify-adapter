@@ -32,5 +32,8 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Docker
+docker-compose.override.yml
+
 # MyPy
 .mypy_cache/
