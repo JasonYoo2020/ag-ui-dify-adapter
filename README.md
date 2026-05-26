@@ -5,13 +5,15 @@ AG-UI protocol adapter for Dify — translates [Dify](https://dify.ai) API respo
 ## Features
 
 - **All 4 Dify app types**: Chat, Agent, Workflow, Completion
-- **Complete event mapping**: Maps all Dify SSE events to AG-UI's 17 standard event types
-- **Tool call support**: Agent tool calls (ReAct loops) translated to `TOOL_CALL_START/ARGS/END`
-- **Streaming**: Real-time text streaming via `TEXT_MESSAGE_START/CONTENT/END`
+- **24+ AG-UI event types**: TEXT_MESSAGE, TOOL_CALL, TOOL_CALL_RESULT, REASONING, STATE_SNAPSHOT, MESSAGES_SNAPSHOT, STEP, CUSTOM, RAW, RUN
+- **Tool call lifecycle**: `TOOL_CALL_START` → `ARGS` → `END` → `RESULT` for Agent ReAct loops
+- **Reasoning events**: `<think>` tag streaming detection → `REASONING_START/MESSAGE_START/CONTENT/MESSAGE_END/END`
+- **Snapshots**: `MESSAGES_SNAPSHOT` + `STATE_SNAPSHOT` emitted at start of every run
+- **Streaming**: Real-time text streaming with `<think>` block separation
 - **Multi-turn conversation**: `thread_id` ↔ `conversation_id` tracking
-- **State & context**: AG-UI state/context/forwardedProps → Dify input variables
-- **File support**: File attachments via Dify's file upload API
-- **HTTP server**: Built-in Starlette endpoint with SSE streaming
+- **State & context**: AG-UI state/context → Dify input variables
+- **Single-port multi-agent**: One server, multiple Dify apps routed by path
+- **RAW passthrough**: Unrecognized Dify events forwarded as `RAW`, never dropped
 - **Async**: Full async support with `httpx`
 
 ## Installation
@@ -28,7 +30,7 @@ pip install ag-ui-dify-adapter[server]
 
 ## Quick Start
 
-### Usage as a library
+### Library
 
 ```python
 import asyncio
@@ -39,7 +41,7 @@ async def main():
     agent = DifyAgent(DifyConfig(
         api_key="app-xxx",
         base_url="https://api.dify.ai/v1",
-        app_type=DifyAppType.AGENT,  # auto-detected if omitted
+        app_type=DifyAppType.AGENT,
     ))
 
     input = RunAgentInput(
@@ -47,9 +49,7 @@ async def main():
         run_id="run-1",
         state=None,
         messages=[UserMessage(id="u1", role="user", content="Hello!")],
-        tools=[],
-        context=[],
-        forwarded_props={},
+        tools=[], context=[], forwarded_props={},
     )
 
     async for event in agent.run(input):
@@ -58,33 +58,31 @@ async def main():
 asyncio.run(main())
 ```
 
-### Usage as an HTTP server
-
-```python
-from ag_ui_dify import create_app
-import uvicorn
-
-app = create_app()
-uvicorn.run(app, host="0.0.0.0", port=8080)
-```
-
-Then send requests:
+### HTTP Server
 
 ```bash
-curl -X POST http://localhost:8080/ \
+# Single agent
+DIFY_API_KEY=app-xxx DIFY_APP_TYPE=agent \
+  uvicorn ag_ui_dify:create_app --port 8080
+
+# Multi-agent (single port, routed by path)
+DIFY_AGENTS='{
+  "agent-a": {"key": "app-xxx", "type": "agent"},
+  "wf-b":    {"key": "app-yyy", "type": "workflow"}
+}' \
+  uvicorn ag_ui_dify:create_app --port 8080
+```
+
+API keys are configured server-side via environment variables — never exposed to clients.
+
+```bash
+# Endpoints
+curl -X POST http://localhost:8080/agent-a \
   -H "Content-Type: application/json" \
-  -d '{
-    "threadId": "t1",
-    "runId": "r1",
-    "messages": [{"id": "u1", "role": "user", "content": "Hello!"}],
-    "tools": [],
-    "context": [],
-    "forwardedProps": {
-      "apiKey": "app-xxx",
-      "baseUrl": "https://api.dify.ai/v1",
-      "appType": "agent"
-    }
-  }'
+  -d '{"threadId":"t1","runId":"r1","messages":[{"id":"u1","role":"user","content":"Hello"}],"tools":[],"context":[]}'
+
+curl http://localhost:8080/health   # → {"status":"ok"}
+curl http://localhost:8080/info     # → agent discovery
 ```
 
 ## Dify → AG-UI Event Mapping
@@ -95,40 +93,41 @@ curl -X POST http://localhost:8080/ \
 |---|---|
 | `agent_thought` (with thought) | `STEP_STARTED` + `CUSTOM` (thought) |
 | `agent_thought` (with tool) | `TOOL_CALL_START` + `TOOL_CALL_ARGS` + `TOOL_CALL_END` |
-| `agent_thought` (with observation) | `CUSTOM` (observation) + `STEP_FINISHED` |
+| `agent_thought` (with observation) | `TOOL_CALL_RESULT` |
 | `agent_message` (first) | `TEXT_MESSAGE_START` |
-| `agent_message` | `TEXT_MESSAGE_CONTENT` |
+| `agent_message` | `TEXT_MESSAGE_CONTENT` (with `<think>` → `REASONING`) |
+| `message_replace` | `CUSTOM` |
+| `message_file` | `CUSTOM` |
 | `message_end` | `TEXT_MESSAGE_END` + `RUN_FINISHED` |
 
 ### Workflow App
 
 | Dify SSE Event | AG-UI Event(s) |
 |---|---|
-| `workflow_started` | `RUN_STARTED` |
-| `node_started` | `STEP_STARTED` |
-| `agent_log` | `STEP_STARTED` / `STEP_FINISHED` |
-| `text_chunk` | `TEXT_MESSAGE_CONTENT` |
+| `workflow_started` | `RUN_STARTED` + `TEXT_MESSAGE_START` |
+| `node_started` / `node_retry` | `STEP_STARTED` |
 | `node_finished` | `STEP_FINISHED` |
+| `agent_log` | `STEP_STARTED` / `STEP_FINISHED` |
+| `iteration_started/completed` | `STEP_STARTED` / `STEP_FINISHED` |
+| `loop_started/completed` | `STEP_STARTED` / `STEP_FINISHED` |
+| `text_chunk` | `TEXT_MESSAGE_CONTENT` (with `<think>` → `REASONING`) |
+| `text_replace` | `CUSTOM` |
+| `workflow_paused` | `CUSTOM` + `RUN_FINISHED` |
+| `human_input_*` | `CUSTOM` |
 | `workflow_finished` | `TEXT_MESSAGE_END` + `RUN_FINISHED` |
 
-### Chat App
+### Chat / Completion App
 
 | Dify SSE Event | AG-UI Event(s) |
 |---|---|
 | `message` (first) | `TEXT_MESSAGE_START` |
-| `message` | `TEXT_MESSAGE_CONTENT` |
-| `message_end` | `TEXT_MESSAGE_END` + `RUN_FINISHED` |
+| `message` | `TEXT_MESSAGE_CONTENT` (with `<think>` → `REASONING`) |
+| `message_replace` | `CUSTOM` |
 | `message_file` | `CUSTOM` |
-
-### Completion App
-
-| Dify SSE Event | AG-UI Event(s) |
-|---|---|
-| `message` (first) | `TEXT_MESSAGE_START` |
-| `message` | `TEXT_MESSAGE_CONTENT` |
+| `tts_message` / `tts_message_end` | `CUSTOM` |
 | `message_end` | `TEXT_MESSAGE_END` + `RUN_FINISHED` |
 
-All app types: `RUN_STARTED` at the beginning, `RUN_ERROR` on error, `ping` ignored.
+**All app types**: `MESSAGES_SNAPSHOT` + `STATE_SNAPSHOT` at start, `RUN_STARTED`, `RUN_ERROR` on error, `ping` ignored, unknown events → `RAW`.
 
 ## API Reference
 
@@ -136,33 +135,43 @@ All app types: `RUN_STARTED` at the beginning, `RUN_ERROR` on error, `ping` igno
 
 ```python
 agent = DifyAgent(DifyConfig(
-    api_key="app-xxx",       # Required: Dify API key
-    base_url="...",          # Default: https://api.dify.ai/v1
-    app_type=DifyAppType.AGENT,  # Auto-detected if omitted
-    user="ag-ui-user",       # Default user identifier
-    timeout=120.0,           # HTTP timeout in seconds
+    api_key="app-xxx",          # Required: Dify API key
+    base_url="...",             # Default: https://api.dify.ai/v1
+    app_type=DifyAppType.AGENT, # Auto-detected if omitted
+    user="ag-ui-user",          # Default user identifier
+    timeout=120.0,              # HTTP timeout in seconds
 ))
-
 async for event in agent.run(run_input):
     ...
 ```
 
-### DifyClient
+### HTTP Server
 
-Low-level async client for all Dify API endpoints:
+```python
+from ag_ui_dify import create_app, load_agents
+import uvicorn
+
+# Programmatic
+agents = load_agents()  # reads DIFY_AGENTS / DIFY_API_KEY from env
+app = create_app()      # Starlette app with /info, /health, /<agent>
+uvicorn.run(app, port=8080)
+```
+
+```
+Routes:
+  POST /<agent-name>   AG-UI RunAgentInput → SSE stream
+  GET  /info           Agent discovery
+  GET  /health         Health check
+```
+
+### DifyClient (low-level)
 
 ```python
 client = DifyClient(config)
-async for evt in client.stream_chat(query="Hello", inputs={}):
-    ...
-async for evt in client.stream_workflow(inputs={"url": "..."}):
-    ...
-async for evt in client.stream_completion(inputs={}):
-    ...
+async for evt in client.stream_chat(query="Hello", inputs={}): ...
+async for evt in client.stream_workflow(inputs={"url": "..."}): ...
+async for evt in client.stream_completion(inputs={}): ...
 await client.stop_chat(task_id="...")
-messages = await client.get_messages(conversation_id="...", user="...")
-convs = await client.get_conversations(user="...")
-upload_result = await client.upload_file(file_path="...", user="...")
 ```
 
 ## Project Structure
@@ -174,25 +183,19 @@ ag_ui_dify/
 ├── dify_client.py        # Async HTTP client for all Dify endpoints
 ├── event_translator.py   # Event translators (Chat/Agent/Workflow/Completion)
 ├── agent.py              # DifyAgent main adapter
-└── server.py             # Starlette HTTP SSE endpoint
-tests/
-├── test_types.py         # Type model tests (19)
-├── test_translator.py    # Translator tests (14)
-├── test_client.py        # Client tests (5)
-├── test_agent.py         # Agent tests (10)
-└── test_integration.py   # Real-environment integration tests
+└── server.py             # Starlette single-port multi-agent server
 ```
 
 ## Verification Status
 
-All 4 Dify app types have been verified against a real Dify instance:
+All 4 Dify app types verified against a real Dify instance:
 
-| App Type | Real Dify Tested | Notes |
+| App Type | Status | Coverage |
 |---|---|---|
 | Agent | ✓ | Tool calls, reasoning chain, multi-turn conversation |
 | Workflow | ✓ | Node execution, agent_log sub-steps, text output |
 | Chat | ✓ | Streaming text, message lifecycle |
-| Completion | ✓ | Streaming text, input variables |
+| Completion | ✓ | Streaming text, `<think>` → REASONING events |
 
 ## Requirements
 
