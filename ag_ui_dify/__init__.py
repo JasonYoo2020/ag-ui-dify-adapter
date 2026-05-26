@@ -31,6 +31,7 @@ from .server import (
     agui_endpoint,
     create_app,
     create_dify_agent_from_forwarded_props,
+    info_endpoint,
     sse_stream,
 )
 
@@ -51,6 +52,7 @@ __all__ = [
     "CompletionTranslator",
     "create_app",
     "agui_endpoint",
+    "info_endpoint",
     "create_dify_agent_from_forwarded_props",
     "sse_stream",
     "_parse_run_input",
