@@ -204,16 +204,20 @@ The adapter server speaks the AG-UI protocol natively — no additional wrapper 
 ```
 CopilotKit Frontend (React)
   │  <CopilotKit runtimeUrl="/api/copilotkit">
-  │    <CopilotChat agentId="dify" />
+  │    <CopilotChat agentId="company-paper" />
   │  </CopilotKit>
   ▼
 CopilotKit Runtime (Next.js API Route)
   │  new CopilotRuntime({
-  │    agents: { dify: new HttpAgent({ url: "http://adapter:8080" }) }
+  │    agents: {
+  │      "company-paper": new HttpAgent({ url: "http://adapter:8080/company-paper" }),
+  │      "market-research": new HttpAgent({ url: "http://adapter:8080/market-research" }),
+  │    }
   │  })
   ▼
-ag-ui-dify-adapter (this package)
-  │  POST /  ← RunAgentInput JSON
+ag-ui-dify-adapter (single port, multi-path)
+  │  POST /company-paper   → Agent (公司一页纸)
+  │  POST /market-research → Workflow (市场调研)
   │  → text/event-stream (AG-UI SSE events)
   ▼
 Dify API
@@ -222,13 +226,26 @@ Dify API
 ### Step 1 — Start the adapter
 
 ```bash
+# Single agent
 DIFY_API_KEY=app-xxx \
-DIFY_BASE_URL=http://localhost/v1 \
 DIFY_APP_TYPE=agent \
-uvicorn ag_ui_dify:create_app --host 0.0.0.0 --port 8080
+uvicorn ag_ui_dify:create_app --port 8080
+
+# Multiple agents
+DIFY_AGENTS='{
+  "company-paper": {"key": "app-xxx", "type": "agent"},
+  "market-research": {"key": "app-yyy", "type": "workflow"}
+}' \
+uvicorn ag_ui_dify:create_app --port 8080
 ```
 
-No code needed — just environment variables.
+Or use Docker Compose:
+
+```bash
+docker compose --env-file .env up -d
+```
+
+All agents served from a single port, routed by path.
 
 ### Step 2 — Configure CopilotKit Runtime
 
@@ -242,11 +259,14 @@ import {
 } from "@copilotkit/runtime";
 import { HttpAgent } from "@ag-ui/client";
 
+const ADAPTER = process.env.DIFY_ADAPTER_URL || "http://localhost:8080";
+
 const runtime = new CopilotRuntime({
   agents: {
-    dify: new HttpAgent({
-      url: process.env.DIFY_ADAPTER_URL || "http://localhost:8080",
-    }),
+    "company-paper": new HttpAgent({ url: `${ADAPTER}/company-paper` }),
+    "market-research": new HttpAgent({ url: `${ADAPTER}/market-research` }),
+    "meeting-bot": new HttpAgent({ url: `${ADAPTER}/meeting-bot` }),
+    "code-convert": new HttpAgent({ url: `${ADAPTER}/code-convert` }),
   },
 });
 
@@ -272,7 +292,7 @@ import "@copilotkit/react-ui/styles.css";
 export default function App() {
   return (
     <CopilotKit runtimeUrl="/api/copilotkit">
-      <CopilotChat agentId="dify" />
+      <CopilotChat agentId="company-paper" />
     </CopilotKit>
   );
 }
@@ -286,34 +306,17 @@ services:
     build: .
     ports: ["8080:8080"]
     environment:
-      DIFY_API_KEY: app-xxx
       DIFY_BASE_URL: http://dify-server/v1
-      DIFY_APP_TYPE: agent
-
-  copilotkit:
-    build: ./copilotkit-app
-    ports: ["3000:3000"]
-    environment:
-      DIFY_ADAPTER_URL: http://adapter:8080
-    depends_on: [adapter]
+      DIFY_AGENTS: |
+        {
+          "company-paper": {"key": "${API_KEY_1}", "type": "agent"},
+          "market-research": {"key": "${API_KEY_2}", "type": "workflow"},
+          "meeting-bot": {"key": "${API_KEY_3}", "type": "chat"},
+          "code-convert": {"key": "${API_KEY_4}", "type": "completion"}
+        }
 ```
 
-### Multi-Agent Setup
-
-```ts
-const runtime = new CopilotRuntime({
-  agents: {
-    "company-paper": new HttpAgent({
-      url: `${ADAPTER}/company-paper`,
-    }),
-    "market-research": new HttpAgent({
-      url: `${ADAPTER}/market-research`,
-    }),
-  },
-});
-```
-
-Run multiple adapter instances, each with its own `DIFY_API_KEY` and `DIFY_APP_TYPE`.
+API keys read from `.env` via `${VAR}` substitution — never exposed to the frontend.
 
 ## Requirements
 

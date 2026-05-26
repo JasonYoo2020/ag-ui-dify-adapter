@@ -174,17 +174,21 @@ upload_result = await client.upload_file(file_path="...", user="...")
 ```
 CopilotKit 前端 (React)
   │  <CopilotKit runtimeUrl="/api/copilotkit">
-  │    <CopilotChat agentId="dify" />
+  │    <CopilotChat agentId="company-paper" />
   │  </CopilotKit>
   ▼
 CopilotKit Runtime (Next.js API Route)
   │  new CopilotRuntime({
-  │    agents: { dify: new HttpAgent({ url: "http://adapter:8080" }) }
+  │    agents: {
+  │      "company-paper": new HttpAgent({ url: "http://adapter:8080/company-paper" }),
+  │      "market-research": new HttpAgent({ url: "http://adapter:8080/market-research" }),
+  │    }
   │  })
   ▼
-ag-ui-dify-adapter (本项目)
-  │  POST /  ← RunAgentInput JSON
-  │  → text/event-stream (AG-UI SSE 事件)
+ag-ui-dify-adapter (单端口，多路径)
+  │  POST /company-paper   → Agent（公司一页纸）
+  │  POST /market-research → Workflow（市场调研）
+  │  → text/event-stream（AG-UI SSE 事件）
   ▼
 Dify API
 ```
@@ -192,13 +196,26 @@ Dify API
 ### 步骤 1 — 启动适配器
 
 ```bash
+# 单个 Agent
 DIFY_API_KEY=app-xxx \
-DIFY_BASE_URL=http://localhost/v1 \
 DIFY_APP_TYPE=agent \
-uvicorn ag_ui_dify:create_app --host 0.0.0.0 --port 8080
+uvicorn ag_ui_dify:create_app --port 8080
+
+# 多个 Agent
+DIFY_AGENTS='{
+  "company-paper": {"key": "app-xxx", "type": "agent"},
+  "market-research": {"key": "app-yyy", "type": "workflow"}
+}' \
+uvicorn ag_ui_dify:create_app --port 8080
 ```
 
-无需编写代码，仅需环境变量。
+或使用 Docker Compose：
+
+```bash
+docker compose --env-file .env up -d
+```
+
+所有 Agent 从单一端口提供服务，按路径路由。
 
 ### 步骤 2 — 配置 CopilotKit Runtime
 
@@ -212,11 +229,14 @@ import {
 } from "@copilotkit/runtime";
 import { HttpAgent } from "@ag-ui/client";
 
+const ADAPTER = process.env.DIFY_ADAPTER_URL || "http://localhost:8080";
+
 const runtime = new CopilotRuntime({
   agents: {
-    dify: new HttpAgent({
-      url: process.env.DIFY_ADAPTER_URL || "http://localhost:8080",
-    }),
+    "company-paper": new HttpAgent({ url: `${ADAPTER}/company-paper` }),
+    "market-research": new HttpAgent({ url: `${ADAPTER}/market-research` }),
+    "meeting-bot": new HttpAgent({ url: `${ADAPTER}/meeting-bot` }),
+    "code-convert": new HttpAgent({ url: `${ADAPTER}/code-convert` }),
   },
 });
 
@@ -242,7 +262,7 @@ import "@copilotkit/react-ui/styles.css";
 export default function App() {
   return (
     <CopilotKit runtimeUrl="/api/copilotkit">
-      <CopilotChat agentId="dify" />
+      <CopilotChat agentId="company-paper" />
     </CopilotKit>
   );
 }
@@ -256,34 +276,17 @@ services:
     build: .
     ports: ["8080:8080"]
     environment:
-      DIFY_API_KEY: app-xxx
       DIFY_BASE_URL: http://dify-server/v1
-      DIFY_APP_TYPE: agent
-
-  copilotkit:
-    build: ./copilotkit-app
-    ports: ["3000:3000"]
-    environment:
-      DIFY_ADAPTER_URL: http://adapter:8080
-    depends_on: [adapter]
+      DIFY_AGENTS: |
+        {
+          "company-paper": {"key": "${API_KEY_1}", "type": "agent"},
+          "market-research": {"key": "${API_KEY_2}", "type": "workflow"},
+          "meeting-bot": {"key": "${API_KEY_3}", "type": "chat"},
+          "code-convert": {"key": "${API_KEY_4}", "type": "completion"}
+        }
 ```
 
-### 多 Agent 部署
-
-```ts
-const runtime = new CopilotRuntime({
-  agents: {
-    "company-paper": new HttpAgent({
-      url: `${ADAPTER}/company-paper`,
-    }),
-    "market-research": new HttpAgent({
-      url: `${ADAPTER}/market-research`,
-    }),
-  },
-});
-```
-
-启动多个适配器实例，每个配置不同的 `DIFY_API_KEY` 和 `DIFY_APP_TYPE`。
+API key 通过 `.env` 文件的 `${VAR}` 语法注入，不会暴露到前端。
 
 ## 依赖
 

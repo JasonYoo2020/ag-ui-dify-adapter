@@ -6,6 +6,7 @@ comprehensive event mapping including:
   REASONING, STATE_SNAPSHOT, MESSAGES_SNAPSHOT, STEP, CUSTOM, RAW, etc.
 - Streaming <think> tag detection → REASONING events
 - 30+ Dify SSE event types handled
+- Single-port multi-agent server with path-based routing
 """
 
 from .agent import DifyAgent
@@ -28,10 +29,9 @@ from .types import (
 )
 from .server import (
     _parse_run_input,
-    agui_endpoint,
     create_app,
-    create_dify_agent_from_forwarded_props,
-    info_endpoint,
+    create_dify_agent,
+    load_agents,
     sse_stream,
 )
 
@@ -51,9 +51,8 @@ __all__ = [
     "WorkflowTranslator",
     "CompletionTranslator",
     "create_app",
-    "agui_endpoint",
-    "info_endpoint",
-    "create_dify_agent_from_forwarded_props",
+    "create_dify_agent",
+    "load_agents",
     "sse_stream",
     "_parse_run_input",
 ]

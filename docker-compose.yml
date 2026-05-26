@@ -1,46 +1,29 @@
 version: "3.8"
 
 services:
-  # ===== 公司一页纸 (Agent) =====
-  company-paper:
+  dify-adapter:
     build: .
     ports:
-      - "8081:8080"
+      - "8080:8080"
     environment:
-      DIFY_API_KEY: ${DIFY_AGENT_API_KEY_ONE_COMPANY_PAPER}
       DIFY_BASE_URL: ${DIFY_BASE_URL:-http://host.docker.internal/v1}
-      DIFY_APP_TYPE: agent
-    restart: unless-stopped
-
-  # ===== 市场调研 (Workflow) =====
-  market-research:
-    build: .
-    ports:
-      - "8082:8080"
-    environment:
-      DIFY_API_KEY: ${DIFY_AGENT_API_KEY_MAKERT_RESEARCH}
-      DIFY_BASE_URL: ${DIFY_BASE_URL:-http://host.docker.internal/v1}
-      DIFY_APP_TYPE: workflow
-    restart: unless-stopped
-
-  # ===== 会议纪要 (Chat) =====
-  meeting-bot:
-    build: .
-    ports:
-      - "8083:8080"
-    environment:
-      DIFY_API_KEY: ${DIFY_AGENT_API_KEY_CHATBOT_MEETING}
-      DIFY_BASE_URL: ${DIFY_BASE_URL:-http://host.docker.internal/v1}
-      DIFY_APP_TYPE: chat
-    restart: unless-stopped
-
-  # ===== 代码转换 (Completion) =====
-  code-convert:
-    build: .
-    ports:
-      - "8084:8080"
-    environment:
-      DIFY_API_KEY: ${DIFY_AGENT_API_KEY_COMPLETION_CODE_CONVERT}
-      DIFY_BASE_URL: ${DIFY_BASE_URL:-http://host.docker.internal/v1}
-      DIFY_APP_TYPE: completion
+      DIFY_AGENTS: |
+        {
+          "company-paper": {
+            "key": "${DIFY_AGENT_API_KEY_ONE_COMPANY_PAPER}",
+            "type": "agent"
+          },
+          "market-research": {
+            "key": "${DIFY_AGENT_API_KEY_MAKERT_RESEARCH}",
+            "type": "workflow"
+          },
+          "meeting-bot": {
+            "key": "${DIFY_AGENT_API_KEY_CHATBOT_MEETING}",
+            "type": "chat"
+          },
+          "code-convert": {
+            "key": "${DIFY_AGENT_API_KEY_COMPLETION_CODE_CONVERT}",
+            "type": "completion"
+          }
+        }
     restart: unless-stopped
