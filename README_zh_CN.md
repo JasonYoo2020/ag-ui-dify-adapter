@@ -13,6 +13,8 @@ AG-UI 协议 Dify 适配器 — 将 [Dify](https://dify.ai) API 响应转换为 
 - **多轮对话**：`thread_id` ↔ `conversation_id` 映射追踪
 - **状态与上下文**：AG-UI state/context → Dify input 变量
 - **单端口多 Agent**：一个端口，多个 Dify App 按路径路由
+- **YAML 配置**：清爽的 `config.yaml`，告别塞在环境变量里的 JSON
+- **.env 自动加载**：通过 python-dotenv 自动读取 `.env` 文件
 - **RAW 透传**：未识别的 Dify 事件以 `RAW` 透传，不丢弃
 - **全异步**：基于 `httpx` 的完整异步支持
 
@@ -60,20 +62,50 @@ asyncio.run(main())
 
 ### HTTP 服务
 
+三种配置方式，任选其一：
+
+**YAML 配置文件（推荐）：**
+
+```yaml
+# config.yaml
+base_url: http://localhost/v1
+agents:
+  agent-a:
+    key: app-xxx
+    type: agent
+  wf-b:
+    key: app-yyy
+    type: workflow
+```
+
+```bash
+uvicorn ag_ui_dify:create_app --port 8080
+```
+
+**环境变量：**
+
 ```bash
 # 单个 Agent
 DIFY_API_KEY=app-xxx DIFY_APP_TYPE=agent \
   uvicorn ag_ui_dify:create_app --port 8080
 
-# 多个 Agent（单端口，按路径路由）
-DIFY_AGENTS='{
-  "agent-a": {"key": "app-xxx", "type": "agent"},
-  "wf-b":    {"key": "app-yyy", "type": "workflow"}
-}' \
+# 多个 Agent（单端口）
+DIFY_AGENTS='{"agent-a":{"key":"app-xxx","type":"agent"}}' \
   uvicorn ag_ui_dify:create_app --port 8080
 ```
 
-API key 通过服务端环境变量配置，不经过客户端。
+**.env 文件（自动加载）：**
+
+```bash
+# .env
+DIFY_AGENTS={"agent-a":{"key":"app-xxx","type":"agent"}}
+```
+
+```bash
+uvicorn ag_ui_dify:create_app --port 8080
+```
+
+API key 始终在服务端，不经过客户端。
 
 ```bash
 # 端点

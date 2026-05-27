@@ -13,6 +13,8 @@ AG-UI protocol adapter for Dify — translates [Dify](https://dify.ai) API respo
 - **Multi-turn conversation**: `thread_id` ↔ `conversation_id` tracking
 - **State & context**: AG-UI state/context → Dify input variables
 - **Single-port multi-agent**: One server, multiple Dify apps routed by path
+- **YAML config**: Clean `config.yaml` — no JSON crammed into env vars
+- **.env auto-load**: Reads `.env` file automatically via python-dotenv
 - **RAW passthrough**: Unrecognized Dify events forwarded as `RAW`, never dropped
 - **Async**: Full async support with `httpx`
 
@@ -60,20 +62,50 @@ asyncio.run(main())
 
 ### HTTP Server
 
+Three ways to configure agents — pick one:
+
+**YAML config file (recommended):**
+
+```yaml
+# config.yaml
+base_url: http://localhost/v1
+agents:
+  agent-a:
+    key: app-xxx
+    type: agent
+  wf-b:
+    key: app-yyy
+    type: workflow
+```
+
+```bash
+uvicorn ag_ui_dify:create_app --port 8080
+```
+
+**Environment variables:**
+
 ```bash
 # Single agent
 DIFY_API_KEY=app-xxx DIFY_APP_TYPE=agent \
   uvicorn ag_ui_dify:create_app --port 8080
 
-# Multi-agent (single port, routed by path)
-DIFY_AGENTS='{
-  "agent-a": {"key": "app-xxx", "type": "agent"},
-  "wf-b":    {"key": "app-yyy", "type": "workflow"}
-}' \
+# Multi-agent (single port)
+DIFY_AGENTS='{"agent-a":{"key":"app-xxx","type":"agent"}}' \
   uvicorn ag_ui_dify:create_app --port 8080
 ```
 
-API keys are configured server-side via environment variables — never exposed to clients.
+**.env file (auto-loaded):**
+
+```bash
+# .env
+DIFY_AGENTS={"agent-a":{"key":"app-xxx","type":"agent"}}
+```
+
+```bash
+uvicorn ag_ui_dify:create_app --port 8080
+```
+
+API keys stay server-side — never exposed to clients.
 
 ```bash
 # Endpoints
