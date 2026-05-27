@@ -1,6 +1,6 @@
 [project]
 name = "ag-ui-dify-adapter"
-version = "0.1.3"
+version = "0.1.4"
 description = "AG-UI protocol adapter for Dify — translates Dify API responses to AG-UI streaming events"
 readme = "README.md"
 license = "MIT"
