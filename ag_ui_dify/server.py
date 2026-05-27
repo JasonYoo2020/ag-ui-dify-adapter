@@ -102,28 +102,81 @@ def create_dify_agent(config: dict) -> DifyAgent:
     ))
 
 
+def _find_config_file() -> Optional[Path]:
+    """Locate YAML/JSON config file."""
+    explicit = os.environ.get("DIFY_CONFIG_FILE", "")
+    if explicit:
+        p = Path(explicit)
+        return p if p.exists() else None
+    for name in ("config.yaml", "config.yml", "config.json"):
+        p = Path.cwd() / name
+        if p.exists():
+            return p
+    return None
+
+
+def _load_yaml_config(path: Path) -> dict:
+    """Load agent config from a YAML (or JSON) file."""
+    raw = path.read_text(encoding="utf-8")
+    if path.suffix in (".yaml", ".yml"):
+        try:
+            import yaml
+            return yaml.safe_load(raw) or {}
+        except ImportError:
+            raise ImportError(
+                "pyyaml is required to read YAML config. "
+                "Install with: pip install ag-ui-dify-adapter[server]"
+            )
+    else:
+        return json.loads(raw)
+
+
 def load_agents() -> Dict[str, DifyAgent]:
-    """Load agent configurations from environment variables.
+    """Load agent configurations.
 
-    Primary: DIFY_AGENTS JSON env var
-      DIFY_AGENTS='{"agent-name":{"key":"app-xxx","type":"agent"},...}'
+    Priority (first wins):
+      1. config.yaml / config.yml / config.json in working directory
+      2. DIFY_CONFIG_FILE env var → path to YAML/JSON file
+      3. DIFY_AGENTS env var → inline JSON
+      4. DIFY_API_KEY + DIFY_APP_TYPE env vars → single default agent
 
-    Fallback: single default agent from DIFY_API_KEY
-      DIFY_API_KEY=app-xxx DIFY_APP_TYPE=agent
+    YAML format:
+      agents:
+        agent-name:
+          key: app-xxx
+          type: agent
+          base_url: http://localhost/v1   # optional
+
+    JSON format (same structure):
+      {"agent-name": {"key": "app-xxx", "type": "agent"}}
     """
     agents: Dict[str, DifyAgent] = {}
 
-    # Primary: DIFY_AGENTS JSON
-    agents_json = os.environ.get("DIFY_AGENTS", "").strip()
-    if agents_json:
-        try:
-            raw = json.loads(agents_json)
-            for name, cfg in raw.items():
-                agents[name] = create_dify_agent(cfg)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid DIFY_AGENTS JSON: {e}")
+    # 1 & 2: YAML/JSON config file
+    config_file = _find_config_file()
+    if config_file:
+        data = _load_yaml_config(config_file)
+        # Support both top-level "agents" key and flat format
+        entries = data.get("agents", data) if isinstance(data, dict) else {}
+        # Merge top-level defaults into each agent
+        defaults = {k: v for k, v in data.items() if k != "agents"}
+        for name, cfg in entries.items():
+            if isinstance(cfg, dict):
+                merged = {**defaults, **cfg}
+                agents[name] = create_dify_agent(merged)
 
-    # Fallback: single default agent
+    # 3: DIFY_AGENTS inline JSON
+    if not agents:
+        agents_json = os.environ.get("DIFY_AGENTS", "").strip()
+        if agents_json:
+            try:
+                raw = json.loads(agents_json)
+                for name, cfg in raw.items():
+                    agents[name] = create_dify_agent(cfg)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid DIFY_AGENTS JSON: {e}")
+
+    # 4: single default agent
     if not agents:
         default_key = os.environ.get("DIFY_API_KEY", "")
         if default_key:

@@ -1,0 +1,17 @@
+# ag-ui-dify-adapter agent configuration
+# Copy to config.yaml and fill in your Dify API keys.
+# Priority: config.yaml > DIFY_AGENTS env > DIFY_API_KEY env
+
+# Default Dify base URL (can be overridden per agent)
+# base_url: https://api.dify.ai/v1
+
+agents:
+  # Agent name = URL path: POST /my-agent
+  my-agent:
+    key: app-xxxx
+    type: agent           # chat | agent | workflow | completion
+
+  # another-agent:
+  #   key: app-yyyy
+  #   type: workflow
+  #   base_url: http://other-dify:8080/v1  # per-agent override

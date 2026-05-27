@@ -32,6 +32,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Local config (real keys)
+config.yaml
+
 # Other (local-only docs)
 other/
 
