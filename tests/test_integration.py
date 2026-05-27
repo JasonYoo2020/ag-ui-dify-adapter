@@ -1,4 +1,8 @@
-"""Comprehensive real integration tests for all Dify app types."""
+"""Comprehensive real integration tests for all Dify app types.
+
+Requires environment variables for each app type. Tests are skipped
+for any app type whose env var is not set.
+"""
 
 import os
 import unittest
@@ -12,26 +16,49 @@ from ag_ui.core import (
 from ag_ui_dify.agent import DifyAgent
 from ag_ui_dify.types import DifyConfig, DifyAppType
 
+# Integration tests are skipped unless env vars are set
+_INTEGRATION_AVAILABLE = any(
+    os.environ.get(k) for k in (
+        "DIFY_AGENT_API_KEY", "DIFY_WORKFLOW_API_KEY",
+        "DIFY_CHATBOT_API_KEY", "DIFY_COMPLETION_API_KEY",
+    )
+)
+
 DIFY_BASE = os.environ.get("DIFY_BASE_URL", "http://localhost/v1")
 
-# App configs
-APPS = {
-    "agent": {
-        "key": os.environ.get("DIFY_AGENT_API_KEY", "app-TcLyr3fZM1lSrNrvJQ3LiTUo"),
+# App configs — keys must be provided via environment variables.
+# Skip tests if the corresponding env var is not set.
+_AGENT_KEY = os.environ.get("DIFY_AGENT_API_KEY")
+_WF_KEY = os.environ.get("DIFY_WORKFLOW_API_KEY")
+_CHAT_KEY = os.environ.get("DIFY_CHATBOT_API_KEY")
+_COMPLETION_KEY = os.environ.get("DIFY_COMPLETION_API_KEY")
+
+APPS = {}
+if _AGENT_KEY:
+    APPS["agent"] = {
+        "key": _AGENT_KEY,
         "type": DifyAppType.AGENT,
         "query": "请给我生成贵州茅台600519的公司一页纸",
-    },
-    "workflow": {
-        "key": os.environ.get("DIFY_WORKFLOW_API_KEY", "app-oxMrTWwuK8NUOQYVbxYG7SFf"),
+    }
+if _WF_KEY:
+    APPS["workflow"] = {
+        "key": _WF_KEY,
         "type": DifyAppType.WORKFLOW,
         "inputs": {"url": "https://www.moutai.com.cn/mtjt/index/index.html"},
-    },
-    "chat": {
-        "key": os.environ.get("DIFY_CHATBOT_API_KEY", "app-B6EqFd0zUJIbCVqNQitbPITe"),
+    }
+if _CHAT_KEY:
+    APPS["chat"] = {
+        "key": _CHAT_KEY,
         "type": DifyAppType.CHAT,
         "query": "请帮我生成一份项目启动会议的会议纪要模板",
-    },
-}
+    }
+if _COMPLETION_KEY:
+    APPS["completion"] = {
+        "key": _COMPLETION_KEY,
+        "type": DifyAppType.COMPLETION,
+        "query": "convert code",
+        "inputs": {"Target_code": "Python", "default_input": "print('hello')"},
+    }
 
 
 async def _collect(agen):
@@ -41,6 +68,10 @@ async def _collect(agen):
     return results
 
 
+@unittest.skipUnless(
+    _INTEGRATION_AVAILABLE,
+    "Skipped: set DIFY_*_API_KEY env vars to run integration tests against real Dify",
+)
 class TestAllAppTypes(unittest.IsolatedAsyncioTestCase):
 
     async def _run_and_check(self, name: str, config: dict):
