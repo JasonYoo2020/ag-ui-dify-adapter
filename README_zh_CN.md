@@ -4,7 +4,7 @@ AG-UI 协议 Dify 适配器 — 将 [Dify](https://dify.ai) API 响应转换为 
 
 ## 特性
 
-- **全部 4 种 Dify 应用类型**：Chat（对话）、Agent（智能体）、Workflow（工作流）、Completion（文本生成）
+- **全部 5 种 Dify 应用类型**：Chatbot（对话）、Chatflow（对话流）、Agent（智能体）、Workflow（工作流）、Completion（文本生成）
 - **24+ 种 AG-UI 事件**：TEXT_MESSAGE、TOOL_CALL、TOOL_CALL_RESULT、REASONING、STATE_SNAPSHOT、MESSAGES_SNAPSHOT、STEP、CUSTOM、RAW、RUN
 - **工具调用全流程**：`TOOL_CALL_START` → `ARGS` → `END` → `RESULT`，覆盖 Agent ReAct 循环
 - **推理事件**：流式 `<think>` 标签检测 → `REASONING_START/MESSAGE_START/CONTENT/MESSAGE_END/END`
@@ -148,7 +148,9 @@ curl http://localhost:8080/info     # → agent 发现
 | `human_input_*` | `CUSTOM` |
 | `workflow_finished` | `TEXT_MESSAGE_END` + `RUN_FINISHED` |
 
-### Chat（对话）/ Completion（文本生成）应用
+### Chatbot（对话）/ Chatflow（对话流）/ Completion（文本生成）应用
+
+Chatbot（chat）、Chatflow（advanced-chat）和 Completion 使用相同的事件格式 — `message` 输出文本，`message_end` 结束。
 
 | Dify SSE 事件 | AG-UI 事件 |
 |---|---|

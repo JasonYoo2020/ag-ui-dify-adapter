@@ -25,11 +25,12 @@ class DifyRequestBaseModel(BaseModel):
 
 
 class DifyAppType(str, Enum):
-    """The four Dify application types."""
-    CHAT = "chat"
-    AGENT = "agent"
-    WORKFLOW = "workflow"
-    COMPLETION = "completion"
+    """Dify application types (5 total)."""
+    CHAT = "chat"               # Chatbot
+    AGENT = "agent"             # Agent / Agent Chat
+    WORKFLOW = "workflow"       # Workflow
+    COMPLETION = "completion"   # Completion / Text Generation
+    CHATFLOW = "advanced-chat"  # Chatflow (advanced chat with workflow)
 
 
 class DifyConfig(ConfiguredBaseModel):

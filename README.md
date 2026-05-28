@@ -4,7 +4,7 @@ AG-UI protocol adapter for Dify — translates [Dify](https://dify.ai) API respo
 
 ## Features
 
-- **All 4 Dify app types**: Chat, Agent, Workflow, Completion
+- **All 5 Dify app types**: Chatbot, Chatflow, Agent, Workflow, Completion
 - **24+ AG-UI event types**: TEXT_MESSAGE, TOOL_CALL, TOOL_CALL_RESULT, REASONING, STATE_SNAPSHOT, MESSAGES_SNAPSHOT, STEP, CUSTOM, RAW, RUN
 - **Tool call lifecycle**: `TOOL_CALL_START` → `ARGS` → `END` → `RESULT` for Agent ReAct loops
 - **Reasoning events**: `<think>` tag streaming detection → `REASONING_START/MESSAGE_START/CONTENT/MESSAGE_END/END`
@@ -148,7 +148,9 @@ curl http://localhost:8080/info     # → agent discovery
 | `human_input_*` | `CUSTOM` |
 | `workflow_finished` | `TEXT_MESSAGE_END` + `RUN_FINISHED` |
 
-### Chat / Completion App
+### Chatbot / Chatflow / Completion App
+
+Chatbot (chat), Chatflow (advanced-chat), and Completion share the same event format — `message` for text, `message_end` to finish.
 
 | Dify SSE Event | AG-UI Event(s) |
 |---|---|
